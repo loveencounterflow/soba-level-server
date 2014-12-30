@@ -1,6 +1,6 @@
 {
   "name": "soba-level-server",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "server-side part of SoBa & LevelDB socket-based communication",
   "main": "lib/main.js",
   "scripts": {
