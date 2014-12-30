@@ -107,7 +107,6 @@ unless module.parent?
   sio_server.on 'connection', ( socket ) =>
     debug '©81uDb', 'connected'
     event_buffer = []
-    e
 
     report_event_buffer = ->
       message = "event buffer for #{SOBA.get_client_id sb, socket}: #{rpr event_buffer}"
