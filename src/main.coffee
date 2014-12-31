@@ -1,4 +1,7 @@
 
+
+
+
 ###
 #===========================================================================================================
 
@@ -59,6 +62,10 @@ help                      = TRM.get_logger 'help',    badge
 SOBA                      = require 'soba-server'
 new_db                    = require 'level'
 
+# debug '©LAyLl', require.resolve 'soba-server'
+# debug '©epd4S', not module.parent?
+# debug '©5M1it',  ( not module.parent? ) or 'serve' in process.argv
+# process.exit()
 
 #-----------------------------------------------------------------------------------------------------------
 @serve = ->
@@ -96,7 +103,7 @@ QUEUE.pull = ( me, handler ) ->
   return me
 
 ############################################################################################################
-unless module.parent?
+if ( not module.parent? ) or 'serve' in process.argv
   sb          = SOBA.new_server()
   app         = SOBA.get_app sb
   router      = SOBA.get_router sb

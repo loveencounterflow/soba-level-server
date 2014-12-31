@@ -1,0 +1,11 @@
+#!/usr/bin/env node
+
+
+require( 'app-module-path' ).addPath( '/vagrant' );
+var log = console.log;
+
+// log( '©LAyLl', require.resolve( 'soba-server' ) );
+log( 'helo' );
+process.argv.push( 'serve' );
+require( './lib/main' );
+
