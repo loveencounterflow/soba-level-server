@@ -62,11 +62,32 @@ help                      = TRM.get_logger 'help',    badge
 SOBA                      = require 'soba-server'
 new_db                    = require 'level'
 
-# debug '©LAyLl', require.resolve 'soba-server'
-# debug '©epd4S', not module.parent?
-# debug '©5M1it',  ( not module.parent? ) or 'serve' in process.argv
-# process.exit()
 
+#===========================================================================================================
+# INSTANTIATION
+#-----------------------------------------------------------------------------------------------------------
+@new_db = ->
+  ### TAINT make configurable ###
+  sb          = SOBA.new_server()
+  db          = new_db njs_path.join __dirname, '../../data/mydb'
+  #.........................................................................................................
+  R           =
+    '~isa':           'SOBA-LEVEL/db'
+    '%soba-server':   sb
+    '%level-db':      db
+  #.........................................................................................................
+  return R
+
+#-----------------------------------------------------------------------------------------------------------
+@get_socket_router  = ( me ) -> SOBA.get_router     me[ '%soba-server' ]
+@get_app            = ( me ) -> SOBA.get_app        me[ '%soba-server' ]
+@get_sio_server     = ( me ) -> SOBA.get_sio_server me[ '%soba-server' ]
+@get_soba_server    = ( me ) -> me[ '%soba-server'  ]
+@get_level_db       = ( me ) -> me[ '%level-db'     ]
+
+
+#===========================================================================================================
+# SERVING
 #-----------------------------------------------------------------------------------------------------------
 @serve = ->
   # { port: port, origins: '*:*', }
@@ -76,6 +97,15 @@ new_db                    = require 'level'
     { address: host, port, } = server.address()
     help "ソバ Server listening to http://#{host}:#{port}"
 
+
+#===========================================================================================================
+# PUTTING AND GETTING FACETS
+#-----------------------------------------------------------------------------------------------------------
+@put = ( me, key, value = null ) ->
+
+
+#===========================================================================================================
+# QUEUE
 #-----------------------------------------------------------------------------------------------------------
 QUEUE = {}
 
@@ -97,18 +127,15 @@ QUEUE.push = ( me, event ) ->
 
 #-----------------------------------------------------------------------------------------------------------
 QUEUE.pull = ( me, handler ) ->
-  return null if me[ 'first-idx' ] is null
-  R = me[ 'queue' ].unsh event
-  me[ 'total-count' ] += 1
+  return null if me[ 'total-count' ] < 1
+  R = me[ 'queue' ].unshift event
+  me[ 'total-count' ] -= 1
   return me
 
 ############################################################################################################
 if ( not module.parent? ) or 'serve' in process.argv
-  sb          = SOBA.new_server()
-  app         = SOBA.get_app sb
-  router      = SOBA.get_router sb
-  sio_server  = SOBA.get_sio_server sb
-  db          = new_db njs_path.join __dirname, '../../data/mydb'
+  SBLVL       = @
+
   debug '©hfSqh', db
   db.put '123', '456', ( error ) =>
     throw error if error?
@@ -118,22 +145,20 @@ if ( not module.parent? ) or 'serve' in process.argv
 
   sio_server.on 'connection', ( socket ) =>
     debug '©81uDb', 'connected'
-    event_buffer = []
+    event_buffer = QUEUE.new_queue()
 
     report_event_buffer = ->
       message = "event buffer for #{SOBA.get_client_id sb, socket}: #{rpr event_buffer}"
       info message
       SOBA.emit_news sb, 'event-buffer', message
 
-    socket.on 'get', ( P ) =>
-      debug 'get', P
-      event_buffer.push [ 'get', P, ]
+    socket.on 'get', ( key ) =>
+      SBLVL.get db, socket, key
       report_event_buffer()
       # next()
 
-    socket.on 'put', ( P ) =>
-      debug 'put', P
-      event_buffer.push [ 'put', P, ]
+    socket.on 'put', ( key, value ) =>
+      SBLVL.put db, socket, key, value
       report_event_buffer()
       # next()
 
