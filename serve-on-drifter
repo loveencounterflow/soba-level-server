@@ -1,11 +1,22 @@
 #!/usr/bin/env node
 
-
+// #########################################################################################################
+TRM                       = require( 'coffeenode-trm' );
+njs_path                  = require( 'path' );
+njs_fs                    = require( 'fs' );
+// .........................................................................................................
 require( 'app-module-path' ).addPath( '/vagrant' );
 var log = console.log;
 
-// log( '©LAyLl', require.resolve( 'soba-server' ) );
-log( 'helo' );
+// .........................................................................................................
+var cmd = njs_path.join( __dirname, 'build' );
+log( cmd );
+TRM.execute( cmd );
+// .........................................................................................................
+var cmd = njs_path.join( __dirname, '../soba-server/build' );
+log( cmd );
+TRM.execute( cmd );
+// .........................................................................................................
 process.argv.push( 'serve' );
 require( './lib/main' );
 

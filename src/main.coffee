@@ -108,6 +108,11 @@ if ( not module.parent? ) or 'serve' in process.argv
   app         = SOBA.get_app sb
   router      = SOBA.get_router sb
   sio_server  = SOBA.get_sio_server sb
+  db          = new_db njs_path.join __dirname, '../../data/mydb'
+  debug '©hfSqh', db
+  db.put '123', '456', ( error ) =>
+    throw error if error?
+    info "put a value"
 
   SOBA.serve sb
 
