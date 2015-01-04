@@ -7,14 +7,14 @@
 
 
 
- .d8888b.  8888888888 8888888b.  888     888 8888888888 8888888b.
-d88P  Y88b 888        888   Y88b 888     888 888        888   Y88b
-Y88b.      888        888    888 888     888 888        888    888
- "Y888b.   8888888    888   d88P Y88b   d88P 8888888    888   d88P
-    "Y88b. 888        8888888P"   Y88b d88P  888        8888888P"
-      "888 888        888 T88b     Y88o88P   888        888 T88b
-Y88b  d88P 888        888  T88b     Y888P    888        888  T88b
- "Y8888P"  8888888888 888   T88b     Y8P     8888888888 888   T88b
+888      8888888888 888     888 8888888888 888         .d8888b.  8888888888 8888888b.  888     888 8888888888 8888888b.
+888      888        888     888 888        888        d88P  Y88b 888        888   Y88b 888     888 888        888   Y88b
+888      888        888     888 888        888        Y88b.      888        888    888 888     888 888        888    888
+888      8888888    Y88b   d88P 8888888    888         "Y888b.   8888888    888   d88P Y88b   d88P 8888888    888   d88P
+888      888         Y88b d88P  888        888            "Y88b. 888        8888888P"   Y88b d88P  888        8888888P"
+888      888          Y88o88P   888        888              "888 888        888 T88b     Y88o88P   888        888 T88b
+888      888           Y888P    888        888        Y88b  d88P 888        888  T88b     Y888P    888        888  T88b
+88888888 8888888888     Y8P     8888888888 88888888    "Y8888P"  8888888888 888   T88b     Y8P     8888888888 888   T88b
 
 
 
@@ -43,15 +43,22 @@ help                      = TRM.get_logger 'help',    badge
 #...........................................................................................................
 SOBA                      = require 'soba-server'
 new_db                    = require 'level'
+range                     = require 'level-range'
+#...........................................................................................................
+### https://github.com/loveencounterflow/pipedreams ###
+D                         = require 'pipedreams'
+$                         = D.remit.bind D
+#...........................................................................................................
+rmrf                      = require 'rimraf'
 
 
 #===========================================================================================================
 # INSTANTIATION
 #-----------------------------------------------------------------------------------------------------------
-@new_db = ->
+@new_db = ( db_route ) ->
   ### TAINT make configurable ###
   sb          = SOBA.new_server()
-  db          = new_db njs_path.join __dirname, '../../data/mydb'
+  db          = new_db db_route
   #.........................................................................................................
   R           =
     '~isa':           'SOBA-LEVEL/db'
@@ -64,8 +71,11 @@ new_db                    = require 'level'
 @get_socket_router  = ( me ) -> SOBA.get_router     me[ '%soba-server' ]
 @get_app            = ( me ) -> SOBA.get_app        me[ '%soba-server' ]
 @get_sio_server     = ( me ) -> SOBA.get_sio_server me[ '%soba-server' ]
+#...........................................................................................................
 @get_soba_server    = ( me ) -> me[ '%soba-server'  ]
 @get_level_db       = ( me ) -> me[ '%level-db'     ]
+#...........................................................................................................
+@get_level_db_route = ( me ) -> ( @get_level_db me )[ 'location' ]
 
 
 #===========================================================================================================
@@ -81,67 +91,139 @@ new_db                    = require 'level'
 
 
 #===========================================================================================================
-# PUTTING AND GETTING FACETS
+# REMOVING DB OR (RANGES OF) RECORDS
 #-----------------------------------------------------------------------------------------------------------
-@put = ( me, key, value = null ) ->
+### TAINT not a SOBA-triggerable method for now; must deal with new DB connection without touching
+  `%level-db` object in `me` ###
+# @remove_db = ( me, socket = null, handler ) ->
+#   ### TAINT must we ensure there are no current connections? ###
+#   switch arity = arguments.length
+#     when 2
+#       [ socket, handler, ] = [ null, socket, ]
+#     when 3
+#       null
+#     else
+#       throw new Error "expected 2 or 3 arguments, got #{arity}"
+#   db_route = @get_level_db_route me
+@_remove_db = ( db_route, handler ) ->
+  warn "erasing database at #{db_route}"
+  rmrf.sync db_route
+  warn "erased database at #{db_route}"
+  # @emit me, socket, 'remove-db', [ db_route, ] if socket?
+  handler null
 
 
 #===========================================================================================================
-# QUEUE
+# PUTTING AND GETTING FACETS
 #-----------------------------------------------------------------------------------------------------------
-QUEUE = {}
+@put = ( me, socket, key, value, handler ) ->
+  [ value, handler, ] = [ null, value, ] unless handler?
+  # debug '©MQfO5', ( rpr key ), ( rpr value )
+  me[ '%level-db' ].put key, value, handler
 
 #-----------------------------------------------------------------------------------------------------------
-QUEUE.new_queue = ->
-  R =
-    'queue':                []
-    'first-idx':            null
-    'total-count':          0
-    'pending-count':        0
-  return R
+@get = ( me, socket, key, handler ) ->
+  throw new Error 'not implemented'
 
 #-----------------------------------------------------------------------------------------------------------
-QUEUE.push = ( me, event ) ->
-  me[ 'queue' ].push event
-  me[ 'total-count'   ] += 1
-  me[ 'pending-count' ] += 1
-  return me
+@dump = ( me, socket, settings ) ->
+  format      = settings?[ 'format' ] ? 'one-by-one'
+  limit       = settings?[ 'take'   ] ? 10
+  db          = @get_level_db me
+  soba_server = @get_soba_server me
+  input       = range db, ''
+  #.........................................................................................................
+  switch format
+    when 'list'
+      Z = []
+    when 'one-by-one'
+      null
+    else
+      ### TAINT put error on socket??? ###
+      throw new Error "unknown format #{rpr format}"
+  #.........................................................................................................
+  ### TAINT how to signal end of stream when `format is 'one-by-one'`? ###
+  ### TAINT should we identify response with a request ID?
+    how do clients sort out responses from overlapping requests` ###
+  input
+    .pipe D.$take limit
+    .pipe D.$show()
+    .pipe $ ( facet, send, end ) =>
+      #.....................................................................................................
+      if facet?
+        #...................................................................................................
+        switch format
+          when 'list'
+            Z.push facet
+          when 'one-by-one'
+            SOBA.emit soba_server, socket, 'dump', facet
+        #...................................................................................................
+        send 1
+      #.....................................................................................................
+      if end?
+        #...................................................................................................
+        switch format
+          when 'list'
+            SOBA.emit soba_server, socket, 'dump', Z
+          when 'one-by-one'
+            null # SOBA.emit soba_server, socket, 'dump', facet
+        ### FUTURE ###
+        # @emit me, socket, 'dump', facet
+        end()
 
-#-----------------------------------------------------------------------------------------------------------
-QUEUE.pull = ( me, handler ) ->
-  return null if me[ 'total-count' ] < 1
-  R = me[ 'queue' ].unshift event
-  me[ 'total-count' ] -= 1
-  return me
+
 
 ############################################################################################################
-if ( not module.parent? ) or 'serve' in process.argv
-  SBLVL       = @
+@demo = ( db_route ) ->
+  db          = SBLVL.new_db db_route
+  level_db    = SBLVL.get_level_db db
+  router      = SBLVL.get_socket_router db
 
-  debug '©hfSqh', db
-  db.put '123', '456', ( error ) =>
-    throw error if error?
-    info "put a value"
+  # debug '©hfSqh', level_db
+  # level_db.put '123', '456', ( error ) =>
+  #   throw error if error?
+  #   info "put a value"
 
-  SOBA.serve sb
+  #---------------------------------------------------------------------------------------------------------
+  router.on '*', ( socket, P, next ) =>
+    debug '©9kKtv', socket[ 'id' ], P
+    next()
 
+  SOBA.serve db
+
+  sio_server = SBLVL.get_sio_server db
   sio_server.on 'connection', ( socket ) =>
     debug '©81uDb', 'connected'
-    event_buffer = QUEUE.new_queue()
+    sb = SBLVL.get_soba_server db
 
-    report_event_buffer = ->
-      message = "event buffer for #{SOBA.get_client_id sb, socket}: #{rpr event_buffer}"
-      info message
-      SOBA.emit_news sb, 'event-buffer', message
-
-    socket.on 'get', ( key ) =>
-      SBLVL.get db, socket, key
-      report_event_buffer()
+    #-------------------------------------------------------------------------------------------------------
+    ### OBS: we're using pipedreams-style method signatures here where payload is always single argument ###
+    socket.on 'get', ( [ key, ] ) =>
+      SBLVL.get db, socket, key, ( error ) ->
+        throw error if error?
+        urge 'ready:', 'get', key
       # next()
 
-    socket.on 'put', ( key, value ) =>
-      SBLVL.put db, socket, key, value
-      report_event_buffer()
+    #-------------------------------------------------------------------------------------------------------
+    ### OBS: we're using pipedreams-style method signatures here where payload is always single argument ###
+    socket.on 'put', ( [ key, value, ] ) =>
+      SBLVL.put db, socket, key, value, ( error ) ->
+        throw error if error?
+        urge 'ready:', 'put', key
+      # next()
+
+    #-------------------------------------------------------------------------------------------------------
+    socket.on 'dump', ( settings ) =>
+      SBLVL.dump db, socket, settings, ( error ) ->
+        throw error if error?
+        urge 'ready:', 'dump'
+      # next()
+
+    #-------------------------------------------------------------------------------------------------------
+    socket.on 'remove-db', =>
+      SBLVL.dump db, socket, settings, ( error ) ->
+        throw error if error?
+        urge 'ready:', 'remove-db'
       # next()
 
   ###
@@ -153,6 +235,14 @@ if ( not module.parent? ) or 'serve' in process.argv
     debug 'put', P
     next()
   ###
+
+
+############################################################################################################
+if ( not module.parent? ) or 'serve' in process.argv
+  SBLVL       = @
+  db_route    = njs_path.join __dirname, '../../data/mydb'
+  SBLVL._remove_db db_route, -> SBLVL.demo db_route
+
 
 
 
