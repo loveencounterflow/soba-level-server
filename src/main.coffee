@@ -25,7 +25,7 @@
 
 ############################################################################################################
 # njs_path                  = require 'path'
-# njs_fs                    = require 'fs'
+njs_fs                    = require 'fs'
 #...........................................................................................................
 TEXT                      = require 'coffeenode-text'
 TYPES                     = require 'coffeenode-types'
@@ -50,6 +50,9 @@ D                         = require 'pipedreams'
 $                         = D.remit.bind D
 #...........................................................................................................
 rmrf                      = require 'rimraf'
+#...........................................................................................................
+### https://github.com/nkzawa/socket.io-stream ###
+wrap_as_socket_stream     = require 'socket.io-stream'
 
 
 #===========================================================================================================
@@ -126,7 +129,7 @@ rmrf                      = require 'rimraf'
   throw new Error 'not implemented'
 
 #-----------------------------------------------------------------------------------------------------------
-@dump = ( me, socket, settings ) ->
+@dump = ( me, settings, handler ) ->
   format      = settings?[ 'format' ] ? 'one-by-one'
   limit       = settings?[ 'take'   ] ? 10
   db          = @get_level_db me
@@ -139,8 +142,7 @@ rmrf                      = require 'rimraf'
     when 'one-by-one'
       null
     else
-      ### TAINT put error on socket??? ###
-      throw new Error "unknown format #{rpr format}"
+      return handler new Error "unknown format #{rpr format}"
   #.........................................................................................................
   ### TAINT how to signal end of stream when `format is 'one-by-one'`? ###
   ### TAINT should we identify response with a request ID?
@@ -156,7 +158,7 @@ rmrf                      = require 'rimraf'
           when 'list'
             Z.push facet
           when 'one-by-one'
-            SOBA.emit soba_server, socket, 'dump', facet
+            handler null, facet
         #...................................................................................................
         send 1
       #.....................................................................................................
@@ -164,11 +166,9 @@ rmrf                      = require 'rimraf'
         #...................................................................................................
         switch format
           when 'list'
-            SOBA.emit soba_server, socket, 'dump', Z
+            handler null, Z
           when 'one-by-one'
-            null # SOBA.emit soba_server, socket, 'dump', facet
-        ### FUTURE ###
-        # @emit me, socket, 'dump', facet
+            handler null, null
         end()
 
 
@@ -184,10 +184,12 @@ rmrf                      = require 'rimraf'
   #   throw error if error?
   #   info "put a value"
 
-  #---------------------------------------------------------------------------------------------------------
-  router.on '*', ( socket, P, next ) =>
-    debug '©9kKtv', socket[ 'id' ], P
-    next()
+  # #---------------------------------------------------------------------------------------------------------
+  # router.on '*', ( socket, P, next ) =>
+  #   [ type, data, rsvp, ] = P
+  #   debug '©9kKtv', socket[ 'id' ], type, ( rpr data ), rsvp?, rpr rsvp
+  #   # rsvp 'XXXXX' if rsvp?
+  #   next()
 
   SOBA.serve db
 
@@ -202,7 +204,6 @@ rmrf                      = require 'rimraf'
       SBLVL.get db, socket, key, ( error ) ->
         throw error if error?
         urge 'ready:', 'get', key
-      # next()
 
     #-------------------------------------------------------------------------------------------------------
     ### OBS: we're using pipedreams-style method signatures here where payload is always single argument ###
@@ -210,21 +211,33 @@ rmrf                      = require 'rimraf'
       SBLVL.put db, socket, key, value, ( error ) ->
         throw error if error?
         urge 'ready:', 'put', key
-      # next()
 
     #-------------------------------------------------------------------------------------------------------
-    socket.on 'dump', ( settings ) =>
-      SBLVL.dump db, socket, settings, ( error ) ->
+    ### TAINT not sure about that `rsvp` name; it shouldn't be `handler`, as there's no initial error
+      argument, just payload. ###
+    # socket.on 'dump', ( stream, settings, rsvp ) =>
+    ( wrap_as_socket_stream socket ).on 'dump', { encoding: 'utf-8', }, ( output, settings ) =>
+      # debug '©iFT1I', arguments
+      # input = njs_fs.createReadStream '/vagrant/package.json', encoding: 'utf-8'
+      # input.pipe output
+      # TRM.dir output
+      ### TAINT using `output,write()` directly doesn't work, using through stream as arbiter ###
+      through = D.create_throughstream()
+      through.pipe output
+      #.....................................................................................................
+      SBLVL.dump db, settings, ( error, data ) =>
         throw error if error?
         urge 'ready:', 'dump'
-      # next()
+        if data?
+          through.write ( JSON.stringify data ) + '\n'
+        else
+          through.end()
 
     #-------------------------------------------------------------------------------------------------------
     socket.on 'remove-db', =>
       SBLVL.dump db, socket, settings, ( error ) ->
         throw error if error?
         urge 'ready:', 'remove-db'
-      # next()
 
   ###
   router.on 'get', ( socket, P, next ) =>

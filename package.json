@@ -32,6 +32,7 @@
     "level-range": "0.0.0",
     "pipedreams": "^0.1.6",
     "rimraf": "^2.2.8",
-    "soba-server": "^0.1.6"
+    "soba-server": "^0.1.6",
+    "socket.io-stream": "^0.6.0"
   }
 }
