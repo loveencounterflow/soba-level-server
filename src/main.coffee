@@ -132,9 +132,10 @@ wrap_as_socket_stream     = require 'socket.io-stream'
 @dump = ( me, settings, handler ) ->
   format      = settings?[ 'format' ] ? 'one-by-one'
   limit       = settings?[ 'take'   ] ? 10
+  prefix      = settings?[ 'prefix' ] ? ''
   db          = @get_level_db me
   soba_server = @get_soba_server me
-  input       = range db, ''
+  input       = range db, prefix
   #.........................................................................................................
   switch format
     when 'list'
@@ -224,12 +225,23 @@ wrap_as_socket_stream     = require 'socket.io-stream'
       ### TAINT using `output,write()` directly doesn't work, using through stream as arbiter ###
       through = D.create_throughstream()
       through.pipe output
+      batch_idx = 0
+      format    = settings?[ 'format' ] ? 'one-by-one'
       #.....................................................................................................
       SBLVL.dump db, settings, ( error, data ) =>
         throw error if error?
         urge 'ready:', 'dump'
         if data?
-          through.write ( JSON.stringify data ) + '\n'
+          switch format
+            when 'one-by-one', 'list'
+              event       = [ 'batch', batch_idx, data, ]
+              batch_idx  += 1
+            # when 'list'
+            #   event       = [ ]
+            else
+              ### TAINT pass error on ###
+              throw new Error "unknown format #{rpr format}"
+          through.write ( JSON.stringify event ) + '\n'
         else
           through.end()
 
@@ -253,8 +265,13 @@ wrap_as_socket_stream     = require 'socket.io-stream'
 ############################################################################################################
 if ( not module.parent? ) or 'serve' in process.argv
   SBLVL       = @
-  db_route    = njs_path.join __dirname, '../../data/mydb'
-  SBLVL._remove_db db_route, -> SBLVL.demo db_route
+  # db_route    = njs_path.join __dirname, '../../data/mydb'
+  db_route    = njs_path.join __dirname, '../../data/jizura-mojikura'
+  remove_db   = no
+  if remove_db
+    SBLVL._remove_db db_route, -> SBLVL.demo db_route
+  else
+    SBLVL.demo db_route
 
 
 
