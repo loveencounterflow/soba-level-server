@@ -22,6 +22,20 @@
 ###
 
 
+#-----------------------------------------------------------------------------------------------------------
+### TAINT expedient until we have started HOLLERITH2 ###
+HOLLERITH = {}
+
+#-----------------------------------------------------------------------------------------------------------
+### TAINT should choose more descriptive name ###
+HOLLERITH._XXX_lte_from_gte = ( gte ) ->
+  length  = Buffer.byteLength gte
+  R       = new Buffer 1 + length
+  R.write gte
+  R[ length ] = 0xff
+  return R
+
+
 
 ############################################################################################################
 # njs_path                  = require 'path'
@@ -43,10 +57,10 @@ help                      = TRM.get_logger 'help',    badge
 #...........................................................................................................
 SOBA                      = require 'soba-server'
 new_db                    = require 'level'
-range                     = require 'level-range'
 #...........................................................................................................
 ### https://github.com/loveencounterflow/pipedreams ###
 D                         = require 'pipedreams'
+D2                        = require 'pipedreams2'
 $                         = D.remit.bind D
 #...........................................................................................................
 rmrf                      = require 'rimraf'
@@ -78,7 +92,8 @@ wrap_as_socket_stream     = require 'socket.io-stream'
 @get_soba_server    = ( me ) -> me[ '%soba-server'  ]
 @get_level_db       = ( me ) -> me[ '%level-db'     ]
 #...........................................................................................................
-@get_level_db_route = ( me ) -> ( @get_level_db me )[ 'location' ]
+@get_level_db_route = ( me ) -> ( @get_level_db     me )[ 'location' ]
+@get_verbose        = ( me ) -> ( @get_soba_server  me )[ 'verbose'  ]
 
 
 #===========================================================================================================
@@ -132,10 +147,12 @@ wrap_as_socket_stream     = require 'socket.io-stream'
 @dump = ( me, settings, handler ) ->
   format      = settings?[ 'format' ] ? 'one-by-one'
   limit       = settings?[ 'take'   ] ? 10
+  skip_count  = settings?[ 'skip'   ] ? 0
   prefix      = settings?[ 'prefix' ] ? ''
   db          = @get_level_db me
   soba_server = @get_soba_server me
-  input       = range db, prefix
+  query       = gte: prefix, lte: HOLLERITH._XXX_lte_from_gte
+  input       = db.createReadStream query
   #.........................................................................................................
   switch format
     when 'list'
@@ -150,7 +167,8 @@ wrap_as_socket_stream     = require 'socket.io-stream'
     how do clients sort out responses from overlapping requests` ###
   input
     .pipe D.$take limit
-    .pipe D.$show()
+    .pipe D2.$skip_first skip_count
+    # .pipe D.$show()
     .pipe $ ( facet, send, end ) =>
       #.....................................................................................................
       if facet?
@@ -202,16 +220,16 @@ wrap_as_socket_stream     = require 'socket.io-stream'
     #-------------------------------------------------------------------------------------------------------
     ### OBS: we're using pipedreams-style method signatures here where payload is always single argument ###
     socket.on 'get', ( [ key, ] ) =>
-      SBLVL.get db, socket, key, ( error ) ->
+      SBLVL.get db, socket, key, ( error ) =>
         throw error if error?
-        urge 'ready:', 'get', key
+        urge 'ready:', 'get', key if @get_verbose db
 
     #-------------------------------------------------------------------------------------------------------
     ### OBS: we're using pipedreams-style method signatures here where payload is always single argument ###
     socket.on 'put', ( [ key, value, ] ) =>
-      SBLVL.put db, socket, key, value, ( error ) ->
+      SBLVL.put db, socket, key, value, ( error ) =>
         throw error if error?
-        urge 'ready:', 'put', key
+        urge 'ready:', 'put', key if @get_verbose db
 
     #-------------------------------------------------------------------------------------------------------
     ### TAINT not sure about that `rsvp` name; it shouldn't be `handler`, as there's no initial error
@@ -230,7 +248,7 @@ wrap_as_socket_stream     = require 'socket.io-stream'
       #.....................................................................................................
       SBLVL.dump db, settings, ( error, data ) =>
         throw error if error?
-        urge 'ready:', 'dump'
+        urge 'ready:', 'dump' if @get_verbose db
         if data?
           switch format
             when 'one-by-one', 'list'
@@ -247,7 +265,7 @@ wrap_as_socket_stream     = require 'socket.io-stream'
 
     #-------------------------------------------------------------------------------------------------------
     socket.on 'remove-db', =>
-      SBLVL.dump db, socket, settings, ( error ) ->
+      SBLVL.dump db, socket, settings, ( error ) =>
         throw error if error?
         urge 'ready:', 'remove-db'
 
