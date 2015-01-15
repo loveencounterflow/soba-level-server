@@ -41,19 +41,18 @@ HOLLERITH._XXX_lte_from_gte = ( gte ) ->
 # njs_path                  = require 'path'
 njs_fs                    = require 'fs'
 #...........................................................................................................
-TEXT                      = require 'coffeenode-text'
-TYPES                     = require 'coffeenode-types'
+# TEXT                      = require 'coffeenode-text'
 #...........................................................................................................
-TRM                       = require 'coffeenode-trm'
-rpr                       = TRM.rpr.bind TRM
+CND                       = require 'cnd'
+rpr                       = CND.rpr.bind CND
 badge                     = 'soba-level-server'
-info                      = TRM.get_logger 'info',    badge
-alert                     = TRM.get_logger 'alert',   badge
-debug                     = TRM.get_logger 'debug',   badge
-warn                      = TRM.get_logger 'warn',    badge
-urge                      = TRM.get_logger 'urge',    badge
-whisper                   = TRM.get_logger 'whisper', badge
-help                      = TRM.get_logger 'help',    badge
+info                      = CND.get_logger 'info',    badge
+alert                     = CND.get_logger 'alert',   badge
+debug                     = CND.get_logger 'debug',   badge
+warn                      = CND.get_logger 'warn',    badge
+urge                      = CND.get_logger 'urge',    badge
+whisper                   = CND.get_logger 'whisper', badge
+help                      = CND.get_logger 'help',    badge
 #...........................................................................................................
 SOBA                      = require 'soba-server'
 new_db                    = require 'level'
@@ -64,9 +63,6 @@ D2                        = require 'pipedreams2'
 $                         = D.remit.bind D
 #...........................................................................................................
 rmrf                      = require 'rimraf'
-#...........................................................................................................
-### https://github.com/nkzawa/socket.io-stream ###
-wrap_as_socket_stream     = require 'socket.io-stream'
 
 
 #===========================================================================================================
@@ -144,27 +140,20 @@ wrap_as_socket_stream     = require 'socket.io-stream'
   throw new Error 'not implemented'
 
 #-----------------------------------------------------------------------------------------------------------
-@dump = ( me, settings, handler ) ->
-  format      = settings?[ 'format' ] ? 'one-by-one'
-  limit       = settings?[ 'take'   ] ? 10
-  skip_count  = settings?[ 'skip'   ] ? 0
-  prefix      = settings?[ 'prefix' ] ? ''
-  db          = @get_level_db me
-  soba_server = @get_soba_server me
-  query       = gte: prefix, lte: HOLLERITH._XXX_lte_from_gte
-  input       = db.createReadStream query
+@dump = ( me, socket, id, settings ) ->
+  warn '©iPuul', settings
+  limit         = settings?[ 'take'   ] ? 10
+  skip_count    = settings?[ 'skip'   ] ? 0
+  prefix        = settings?[ 'prefix' ] ? ''
+  # debug '©24THN', me[ '%level-db'     ]
+  db            = @get_level_db me
+  soba_server   = @get_soba_server me
+  query         = gte: prefix, lte: HOLLERITH._XXX_lte_from_gte prefix
+  input         = db.createReadStream query
+  type_with_id  = "dump##{id}"
+  batch_idx     = -1
+  warn '©WUaB1', "skipping first #{skip_count} entries" if skip_count > 0
   #.........................................................................................................
-  switch format
-    when 'list'
-      Z = []
-    when 'one-by-one'
-      null
-    else
-      return handler new Error "unknown format #{rpr format}"
-  #.........................................................................................................
-  ### TAINT how to signal end of stream when `format is 'one-by-one'`? ###
-  ### TAINT should we identify response with a request ID?
-    how do clients sort out responses from overlapping requests` ###
   input
     .pipe D.$take limit
     .pipe D2.$skip_first skip_count
@@ -172,24 +161,16 @@ wrap_as_socket_stream     = require 'socket.io-stream'
     .pipe $ ( facet, send, end ) =>
       #.....................................................................................................
       if facet?
-        #...................................................................................................
-        switch format
-          when 'list'
-            Z.push facet
-          when 'one-by-one'
-            handler null, facet
-        #...................................................................................................
-        send 1
+        batch_idx  += 1
+        do ( batch_idx ) =>
+          f = =>
+            debug '©cGwQe', type_with_id, [ 'batch', batch_idx, facet, ]
+            socket.emit type_with_id, [ 'batch', batch_idx, facet, ]
+          setTimeout f, ( CND.random_number 10, 20 )
       #.....................................................................................................
       if end?
-        #...................................................................................................
-        switch format
-          when 'list'
-            handler null, Z
-          when 'one-by-one'
-            handler null, null
+        setTimeout ( -> socket.emit type_with_id, null ), 2000
         end()
-
 
 
 ############################################################################################################
@@ -198,19 +179,26 @@ wrap_as_socket_stream     = require 'socket.io-stream'
   level_db    = SBLVL.get_level_db db
   router      = SBLVL.get_socket_router db
 
-  # debug '©hfSqh', level_db
-  # level_db.put '123', '456', ( error ) =>
-  #   throw error if error?
-  #   info "put a value"
 
-  # #---------------------------------------------------------------------------------------------------------
-  # router.on '*', ( socket, P, next ) =>
-  #   [ type, data, rsvp, ] = P
-  #   debug '©9kKtv', socket[ 'id' ], type, ( rpr data ), rsvp?, rpr rsvp
-  #   # rsvp 'XXXXX' if rsvp?
-  #   next()
+  #---------------------------------------------------------------------------------------------------------
+  router.on '*', ( socket, P, next ) =>
+    [ type_with_id, data, rsvp, ] = P
+    debug '©9kKtv', socket[ 'id' ], type_with_id, ( rpr data ), rsvp?, rpr rsvp
+    # rsvp 'XXXXX' if rsvp?
+    [ type, id, ]   = type_with_id.split '#'
+    id             ?= null
+    help '©l3ARP', type, id
+    switch type
+      when 'dump'
+        if CND.isa_function P
+          P 'hello there'
+        else
+          @dump db, socket, id, data
+    next()
 
+  ##########################################################################################################
   SOBA.serve db
+  ##########################################################################################################
 
   sio_server = SBLVL.get_sio_server db
   sio_server.on 'connection', ( socket ) =>
@@ -232,52 +220,10 @@ wrap_as_socket_stream     = require 'socket.io-stream'
         urge 'ready:', 'put', key if @get_verbose db
 
     #-------------------------------------------------------------------------------------------------------
-    ### TAINT not sure about that `rsvp` name; it shouldn't be `handler`, as there's no initial error
-      argument, just payload. ###
-    # socket.on 'dump', ( stream, settings, rsvp ) =>
-    ( wrap_as_socket_stream socket ).on 'dump', { encoding: 'utf-8', }, ( output, settings ) =>
-      # debug '©iFT1I', arguments
-      # input = njs_fs.createReadStream '/vagrant/package.json', encoding: 'utf-8'
-      # input.pipe output
-      # TRM.dir output
-      ### TAINT using `output,write()` directly doesn't work, using through stream as arbiter ###
-      through = D.create_throughstream()
-      through.pipe output
-      batch_idx = 0
-      format    = settings?[ 'format' ] ? 'one-by-one'
-      #.....................................................................................................
-      SBLVL.dump db, settings, ( error, data ) =>
-        throw error if error?
-        urge 'ready:', 'dump' if @get_verbose db
-        if data?
-          switch format
-            when 'one-by-one', 'list'
-              event       = [ 'batch', batch_idx, data, ]
-              batch_idx  += 1
-            # when 'list'
-            #   event       = [ ]
-            else
-              ### TAINT pass error on ###
-              throw new Error "unknown format #{rpr format}"
-          through.write ( JSON.stringify event ) + '\n'
-        else
-          through.end()
-
-    #-------------------------------------------------------------------------------------------------------
     socket.on 'remove-db', =>
       SBLVL.dump db, socket, settings, ( error ) =>
         throw error if error?
         urge 'ready:', 'remove-db'
-
-  ###
-  router.on 'get', ( socket, P, next ) =>
-    debug 'get', P
-    next()
-
-  router.on 'put', ( socket, P, next ) =>
-    debug 'put', P
-    next()
-  ###
 
 
 ############################################################################################################
