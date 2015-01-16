@@ -140,36 +140,33 @@ rmrf                      = require 'rimraf'
   throw new Error 'not implemented'
 
 #-----------------------------------------------------------------------------------------------------------
-@dump = ( me, socket, id, settings ) ->
+@dump = ( me, socket, type_with_id, settings ) ->
   warn '©iPuul', settings
   limit         = settings?[ 'take'   ] ? 10
   skip_count    = settings?[ 'skip'   ] ? 0
   prefix        = settings?[ 'prefix' ] ? ''
+  rsvp          = settings?[ 'rsvp'   ] ? null
   # debug '©24THN', me[ '%level-db'     ]
   db            = @get_level_db me
   soba_server   = @get_soba_server me
   query         = gte: prefix, lte: HOLLERITH._XXX_lte_from_gte prefix
   input         = db.createReadStream query
-  type_with_id  = "dump##{id}"
   batch_idx     = -1
   warn '©WUaB1', "skipping first #{skip_count} entries" if skip_count > 0
   #.........................................................................................................
   input
-    .pipe D.$take limit
     .pipe D2.$skip_first skip_count
+    .pipe D.$take limit
     # .pipe D.$show()
     .pipe $ ( facet, send, end ) =>
       #.....................................................................................................
       if facet?
         batch_idx  += 1
-        do ( batch_idx ) =>
-          f = =>
-            debug '©cGwQe', type_with_id, [ 'batch', batch_idx, facet, ]
-            socket.emit type_with_id, [ 'batch', batch_idx, facet, ]
-          setTimeout f, ( CND.random_number 10, 20 )
+        debug '©cGwQe', type_with_id, batch_idx, facet[ 'key' ]
+        socket.emit type_with_id, [ 'batch', batch_idx, facet, rsvp, ]
       #.....................................................................................................
       if end?
-        setTimeout ( -> socket.emit type_with_id, null ), 2000
+        socket.emit type_with_id, null
         end()
 
 
@@ -179,21 +176,20 @@ rmrf                      = require 'rimraf'
   level_db    = SBLVL.get_level_db db
   router      = SBLVL.get_socket_router db
 
-
   #---------------------------------------------------------------------------------------------------------
   router.on '*', ( socket, P, next ) =>
     [ type_with_id, data, rsvp, ] = P
-    debug '©9kKtv', socket[ 'id' ], type_with_id, ( rpr data ), rsvp?, rpr rsvp
+    # debug '©9kKtv', socket[ 'id' ], type_with_id, ( rpr data ), rsvp?, rpr rsvp
     # rsvp 'XXXXX' if rsvp?
     [ type, id, ]   = type_with_id.split '#'
     id             ?= null
-    help '©l3ARP', type, id
+    # help '©l3ARP', type, id
     switch type
       when 'dump'
         if CND.isa_function P
           P 'hello there'
         else
-          @dump db, socket, id, data
+          @dump db, socket, type_with_id, data
     next()
 
   ##########################################################################################################
