@@ -162,7 +162,7 @@ rmrf                      = require 'rimraf'
       #.....................................................................................................
       if facet?
         batch_idx  += 1
-        debug '©cGwQe', type_with_id, batch_idx, facet[ 'key' ]
+        # debug '©cGwQe', type_with_id, batch_idx, facet[ 'key' ]
         socket.emit type_with_id, [ 'batch', batch_idx, facet, rsvp, ]
       #.....................................................................................................
       if end?
